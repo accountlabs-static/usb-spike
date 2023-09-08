@@ -32,6 +32,7 @@ export class KeystoneProtocol {
 
   static parseResult(arr) {
     const frame = KeystoneFrame.from(Buffer.from(arr).toString('hex'));
+    console.log('frame', Buffer.from(arr).toString('hex'));
     const data = frame.getData();
     const commandType = getServiceCommandDefinition({
       serviceId: frame.serviceId,

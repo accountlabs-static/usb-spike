@@ -54,6 +54,7 @@ export class KeystoneFrame {
       _len1,
       ...dataZoneAndCrc32
     ] = buf;
+    console.log('buf', hexStr);
     if (head !== this.head) throw new Error('Invalid frame head');
 
     const originChecksum = hexStr.slice(-8);

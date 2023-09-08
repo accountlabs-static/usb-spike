@@ -65,12 +65,35 @@ export const SignTxService = {
       id: 1,
       data: {
         data: { id: 1, type: FieldType.String },
+        fromAddress: { id: 2, type: FieldType.String },
+        chainId: { id: 3, type: FieldType.String },
       },
     },
     signTxResponse: {
       id: 2,
       data: {
-        data: { id: 2, type: FieldType.String },
+        res: { id: 0x11, type: FieldType.String },
+        status: { id: 0x12, type: FieldType.String },
+      },
+    },
+  }
+}
+
+export const AddressService = {
+  id: 4,
+  commands: {
+    params: {
+      id: 1,
+      data: {
+        path: { id: 1, type: FieldType.String },
+      }
+    },
+    address: {
+      id: 2,
+      data: {
+        publicKey: { id: 1, type: FieldType.String },
+        address: { id: 1, type: FieldType.String },
+        chainCode: { id: 1, type: FieldType.String },
       },
     },
   }
@@ -98,8 +121,10 @@ export const ServiceCommandId = {
   DeviceInfo: mapToServiceCommandId(DeviceInfoService),
   /** @type {typeof FileTransferService.commands} */
   FileTransfer: mapToServiceCommandId(FileTransferService),
-    /** @type {typeof SignTxService.commands} */
+  /** @type {typeof SignTxService.commands} */
   SignTxMessage: mapToServiceCommandId(SignTxService),
+  /** @type {typeof AddressService.commands} */
+  AddressInfo: mapToServiceCommandId(AddressService),
 };
 
 export function getServiceCommandDefinition({ serviceId, commandId }) {

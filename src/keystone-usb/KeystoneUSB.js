@@ -24,6 +24,10 @@ export class KeystoneUSB {
     inPackageSize: 64,
   };
 
+  isConnect() {
+    return this.device?.opened;
+  }
+
   async init() {
     try {
       this.device = await navigator.usb.requestDevice({
@@ -80,6 +84,29 @@ export class KeystoneUSB {
     return null;
   }
 
+  async getAddress() {
+    const protocol = new KeystoneProtocol();
+    const cmd = KeystoneProtocol.Command.AddressInfo.params;
+    protocol.frame.appendData(cmd.data.path, "44'/60'/0'/0'/0");
+    await this.send(
+      protocol.generateCommand(cmd),
+    );
+    protocol.incrementPackageIndex(this.packageIndex);
+    const receiveRes = await this.receive();
+
+    const parseResult = KeystoneProtocol.parseResult(
+      new Uint8Array(receiveRes.data.buffer),
+    );
+    if (
+      !parseResult._frame.isCommand(
+        KeystoneProtocol.Command.AddressInfo.address,
+      )
+    ) {
+      throw new Error('?');
+    }
+    return parseResult;
+  }
+
   async receive() {
     if (!this.device?.opened) {
       throw new Error('not connect device');
@@ -94,6 +121,30 @@ export class KeystoneUSB {
       console.error('send out error', err);
     }
     return null;
+  }
+
+  async signTx({ data, rootPath }) {
+    const protocol = new KeystoneProtocol();
+    const cmd = KeystoneProtocol.Command.SignTxMessage.signTx;
+    protocol.frame.appendData(cmd.data.data, data);
+    protocol.frame.appendData(cmd.data.fromAddress, rootPath);
+    protocol.frame.appendData(cmd.data.chainId, '0x666');
+    await this.send(
+      protocol.generateCommand(cmd),
+    );
+    protocol.incrementPackageIndex(this.packageIndex);
+    const receiveRes = await this.receive();
+    const parseResult = KeystoneProtocol.parseResult(
+      new Uint8Array(receiveRes.data.buffer),
+    );
+    if (
+      !parseResult._frame.isCommand(
+        KeystoneProtocol.Command.SignTxMessage.signTxResponse,
+      )
+    ) {
+      throw new Error('?');
+    }
+    return parseResult;
   }
 
   async getDeviceBaseInfo() {
@@ -114,130 +165,5 @@ export class KeystoneUSB {
       throw new Error('get device info failed');
     }
     return parseResult;
-  }
-
-  async signTx(unsignedTx, fromAddress) {
-    const protocol = new KeystoneProtocol();
-    const cmd = KeystoneProtocol.Command.SignTxMessage.signTx;
-    protocol.frame.appendData(cmd.data.data, 'hello world?????');
-    await this.send(
-      protocol.generateCommand(cmd),
-    );
-    protocol.incrementPackageIndex(this.packageIndex);
-    const receiveRes = await this.receive();
-    const parseResult = KeystoneProtocol.parseResult(
-      new Uint8Array(receiveRes.data.buffer),
-    );
-    if (
-      !parseResult._frame.isCommand(
-        KeystoneProtocol.Command.SignTxMessage.signTxResponse,
-      )
-    ) {
-      throw new Error('get device info failed');
-    }
-    return parseResult;
-  }
-
-  async sendFileInfo({ filename, filesize, filemd5, fileSig }) {
-    const protocol = new KeystoneProtocol();
-    const cmd = KeystoneProtocol.Command.FileTransfer.FileInfo;
-    protocol.frame.appendData(cmd.data.filename, filename || 'pillar.bin');
-    protocol.frame.appendData(cmd.data.filesize, filesize, 4);
-    protocol.frame.appendData(cmd.data.filemd5, filemd5);
-    protocol.frame.appendData(cmd.data.fileSig, fileSig);
-    const sendRes = await this.send(protocol.generateCommand(cmd));
-    protocol.incrementPackageIndex(this.packageIndex);
-    if (sendRes.status !== 'ok') throw new Error('send file info error');
-
-    const receiveRes = await this.receive();
-    const parseResult = KeystoneProtocol.parseResult(
-      new Uint8Array(receiveRes.data.buffer),
-    );
-    if (receiveRes.status !== 'ok') throw new Error('receive file info error');
-    const isFileInfo = parseResult._frame.isCommand(
-      KeystoneProtocol.Command.FileTransfer.FileInfo,
-    );
-    const isTlvAck = parseResult._frame.hasType(
-      KeystoneProtocol.Command.FileTransfer.FileInfo.data.ack.id,
-    );
-    if (isFileInfo && isTlvAck) {
-      const error = find(UsbErrorStatus, it => it.id === parseResult.ack);
-      if (error) {
-        throw new Error(error.msg);
-      }
-      if (parseResult.ack !== 0) {
-        throw new Error(UsbErrorStatus.Incorrect.msg);
-      }
-    }
-    return parseResult;
-  }
-
-  async sendFile({ fileContent, chunkSize = 4096, onProgress }) {
-    const protocol = new KeystoneProtocol();
-    const cmd = KeystoneProtocol.Command.FileTransfer.FileContent;
-
-    this.sendProgress.allSize = fileContent.byteLength;
-    const chunkedData = chunk(fileContent, chunkSize);
-
-    let receiveRes = null;
-    let parseResult = null;
-    let isSended = false;
-    let sendedAck = false;
-    for (const [idx, data] of Object.entries(chunkedData)) {
-      protocol.frame.appendData(cmd.data.offset, idx * chunkSize, 4);
-      protocol.frame.appendData(
-        cmd.data.data,
-        Buffer.from(data).toString('hex'),
-        4,
-      );
-      const sendData = protocol.generateCommand(
-        KeystoneProtocol.Command.FileTransfer.FileContent,
-      );
-      const sendRes = await this.send(sendData);
-      protocol.incrementPackageIndex(this.packageIndex);
-      if (sendRes.status !== 'ok') {
-        throw new Error(`Send failed: ${sendRes.status}`);
-      }
-
-      receiveRes = await this.receive();
-      parseResult = KeystoneProtocol.parseResult(
-        new Uint8Array(receiveRes?.data.buffer),
-      );
-      if (receiveRes.status === 'ok' && parseResult) {
-        const isReceiveType = parseResult._frame.dataZone.at(0)?.type === 3;
-        if (parseResult.ack !== 0 && !isReceiveType) {
-          throw new Error('Invalid Received device size');
-        }
-        this.sendProgress.current = parseResult.deviceReceive;
-        onProgress?.(this.sendProgress);
-        if (
-          Number(idx) === chunkedData.length - 1 &&
-          fileContent.byteLength === parseResult.deviceReceive
-        ) {
-          isSended = true;
-        }
-      }
-      protocol.frame.clearData();
-    }
-    if (isSended) {
-      const sendData = protocol.generateCommand(
-        KeystoneProtocol.Command.FileTransfer.Transfered,
-      );
-      protocol.frame.setAck(1);
-      const sendRes = await this.send(sendData);
-      if (sendRes.status !== 'ok') {
-        throw new Error(`Send failed: ${sendRes.status}`);
-      }
-
-      receiveRes = await this.receive();
-      parseResult = KeystoneProtocol.parseResult(
-        new Uint8Array(receiveRes.data.buffer),
-      );
-      if (parseResult._frame.flags.ack === 0) {
-        sendedAck = true;
-      }
-    }
-
-    return isSended && sendedAck;
   }
 }
