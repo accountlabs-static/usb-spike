@@ -1,49 +1,80 @@
 import React from 'react';
+import { Button, Space, Spin, message } from 'antd';
+import { ApiOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
+import createTransport from '@keystonehq/hw-transport-webusb';
+import Eth from '@keystonehq/hw-app-eth';
 import './App.css';
-import Button from '@mui/material/Button';
-import { KeystoneUSB } from './keystone-usb/KeystoneUSB';
-import TextField from '@mui/material/TextField';
+
+const mockTxUR = 'UR:ETH-SIGN-REQUEST/OLADTPDAGDWMZTFTZORNGEFGWNNLGAIACSSBIYEHFNAOHDDLAOWEAHAOLRHKISDLAELRHKISDLBTLFGMAYMWGAGYFLASPLMDMYBGNDATEEISPLLGBABEFXLSIMVALNASCSGLJPNBAELARTAXAAAAAHAHTAADDYOEADLECSDWYKCSFNYKAEYKAEWKAEWKAOCYBNHEGSHYAMGHIHSNEOKTVWHDVSJETIWDTYPLVYGYKBFNNSVAWMNEFHLADWBB';
 
 function App() {
-  const [keystone, setKeystone] = React.useState<KeystoneUSB | null>(null);
-  const [path, setPath] = React.useState<string>("44'/60'/0'/0");
-  const [rootPath, setRootPath] = React.useState<string>("44'/60'/0'");
+  const [result, setResult] = React.useState<string>('');
+  const [loading, setLoading] = React.useState(false);
+  const [eth, setEth] = React.useState<Eth | null>(null);
 
-  const connect = async () => {
-    const instance = new KeystoneUSB();
+  const [messageApi, contextHolder] = message.useMessage();
 
-    if (instance) {
-      await instance.init();
-      setKeystone(instance);
-    }
+  const success = (content: React.ReactNode) => {
+    messageApi.open({
+      type: 'success',
+      content,
+    });
+  };
+
+  const error = (content: React.ReactNode) => {
+    messageApi.open({
+      type: 'error',
+      content,
+    });
   }
 
-  const sign = React.useCallback(async () => {
-    if (keystone) {
-      const parseResult = await keystone.signTx({ data: path, rootPath }) as any;
-      console.log(parseResult);
-      alert(`${path}: ${parseResult?.res}`);
-    }
-  }, [keystone, path, rootPath])
+  const handleLink2Device = React.useCallback(async () => {
+    setLoading(true);
+    const transport = await createTransport().catch((err) => error(err?.message ?? 'unknow error')).finally(() => setLoading(false));
+    if (!transport) return;
+    setEth(new Eth(transport));
+    success('🎉 Link to Keystone3 Device Success!');
+  }, [eth, result]);
 
-  const getDeviceInfo = async () => {
-    if (keystone) {
-      const parseResult = await keystone.getDeviceBaseInfo();
-      console.log(parseResult);
+  const handleSignTx = React.useCallback(async () => {
+    if (!eth) {
+      error('Please link to Keystone3 Device first!');
+      return;
     }
-  }
+    setLoading(true);
+    try {
+      const result = await eth?.signTransaction(mockTxUR);
+      console.log(result);
+      setResult(result);
+    } catch (e: any) {
+      error(e?.message ?? 'Sign ETH tx failed!');
+    }
+    setLoading(false)
+  }, [eth, result]);
+
+  const handleCheckDeviceLockStatus = React.useCallback(async () => {
+    if (!eth) {
+      error('Please link to Keystone3 Device first!');
+      return;
+    }
+    setLoading(true);
+    const result = await eth?.checkLockStatus().catch((err) => error(err?.message ?? '')).finally(() => setLoading(false));
+    console.log(result);
+    setResult(result);
+  }, [eth, result]);
 
   return (
-    <div className="App">
-      <TextField label="Root Path" variant="outlined" value={rootPath} onChange={(e) => {
-        setRootPath(e.target.value);
-      }} />
-      <TextField label="Path" variant="outlined" value={path} onChange={(e) => {
-        setPath(e.target.value);
-      }} />
-      <Button variant="contained" disabled={keystone?.isConnect()} onClick={connect}>Connect Keystone3</Button>
-      <Button variant="contained" disabled={!keystone?.isConnect()} onClick={sign}>Get Address</Button>
-      <Button variant="contained" disabled={!keystone?.isConnect()} onClick={getDeviceInfo}>getDeviceInfo</Button>
+    <div className='App'>
+      <Spin spinning={loading}>
+        <Space direction='vertical' style={{
+          gap: '20px',
+        }}>
+          <Button icon={<ApiOutlined />} onClick={handleLink2Device}>Link to Keystone3 Device</Button>
+          <Button icon={<EditOutlined />} onClick={handleSignTx}>Sign ETH tx</Button>
+          <Button icon={<LockOutlined />} onClick={handleCheckDeviceLockStatus}>Check Device Lock Status</Button>
+        </Space>
+      </Spin>
+      {contextHolder}
     </div>
   );
 }
