@@ -47,7 +47,7 @@ function App() {
       console.log(result);
       setResult(result);
     } catch (e: any) {
-      error(e?.message ?? 'Sign ETH tx failed!');
+      error(e?.message ?? 'Sign ETH Transaction failed!');
     }
     setLoading(false)
   }, [eth, result]);
@@ -70,7 +70,7 @@ function App() {
           gap: '20px',
         }}>
           <Button icon={<ApiOutlined />} onClick={handleLink2Device}>Link to Keystone3 Device</Button>
-          <Button icon={<EditOutlined />} onClick={handleSignTx}>Sign ETH tx</Button>
+          <Button icon={<EditOutlined />} onClick={handleSignTx}>Sign ETH Transaction</Button>
           <Button icon={<LockOutlined />} onClick={handleCheckDeviceLockStatus}>Check Device Lock Status</Button>
         </Space>
       </Spin>
